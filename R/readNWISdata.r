@@ -13,9 +13,11 @@
 #' "America/Anchorage", as well as the following which do not use daylight savings time: "America/Honolulu",
 #' "America/Jamaica","America/Managua","America/Phoenix", and "America/Metlakatla". See also  \code{OlsonNames()} 
 #' for more information on time zones.
-#' @param \dots see \url{https://waterservices.usgs.gov/rest/Site-Service.html#Service} for a complete list of options.  A list of arguments can also be supplied. 
-#' One important argument to include is 'service'. Possible values are "iv" (for instantaneous), "dv" (for daily values), "gwlevels" 
-#' (for groundwater levels), "site" (for site service), "qw" (water-quality),"measurement", and "stat" (for 
+#' @param \dots see \url{https://waterservices.usgs.gov/rest/Site-Service.html} for a complete list of options.  A 
+#' list of arguments can also be supplied. One important argument to include is 'service'. Possible values are "iv" 
+#' (for instantaneous), "iv_recent" (for instantaneous values within the last 120 days),
+#' "dv" (for daily values), "gwlevels" (for groundwater levels),
+#' "site" (for site service), "qw" (water-quality),"measurement", and "stat" (for 
 #' statistics service). Note: "qw" and "measurement" calls go to: 
 #' \url{https://nwis.waterdata.usgs.gov/usa/nwis} for data requests, and use different call requests schemes.
 #' The statistics service has a limited selection of arguments (see \url{https://waterservices.usgs.gov/rest/Statistics-Service-Test-Tool.html}). 
@@ -119,6 +121,19 @@
 #'                                 parameterCd = "00060",
 #'                                 startDate = "2015-01-01",
 #'                                 endDate = "2015-01-30")
+#' va_counties <- c("51001","51003","51005","51007","51009","51011","51013","51015")
+#' va_counties_data <- readNWISdata(startDate = "2015-01-01", endDate = "2015-12-31", 
+#' parameterCd = "00060", countycode = va_counties)
+#' site_id <- '01594440'
+#' rating_curve <- readNWISdata(service = "rating", site_no = site_id, file_type="base")
+#' all_sites_base <- readNWISdata(service = "rating", file_type="base")
+#' all_sites_core <- readNWISdata(service = "rating", file_type="corr")
+#' all_sites_exsa <- readNWISdata(service = "rating", file_type="exsa")
+#' all_sites_24hrs <- readNWISdata(service = "rating", file_type="exsa", period = 24)
+#' 
+#' today <- readNWISdata(service="iv", startDate = Sys.Date(), 
+#'                       parameterCd = "00060", siteNumber = "05114000")
+#' 
 #' }
 readNWISdata <- function(..., asDateTime=TRUE,convertType=TRUE,tz="UTC"){
   
@@ -137,6 +152,9 @@ readNWISdata <- function(..., asDateTime=TRUE,convertType=TRUE,tz="UTC"){
   }
   #actually get the data
   if(length(grep("rdb",values["format"])) >0){
+    if(service == "rating"){
+      baseURL <- gsub(pattern = "&format=rdb",replacement = "", baseURL)
+    }
     retval <- importRDB1(baseURL, tz = tz, asDateTime=asDateTime, convertType=convertType)
   } else {
     retval <- importWaterML1(baseURL, tz= tz, asDateTime=asDateTime)
@@ -163,7 +181,7 @@ readNWISdata <- function(..., asDateTime=TRUE,convertType=TRUE,tz="UTC"){
     
   }
     
-  if("iv" == service){
+  if("iv" == service | "iv_recent" == service){
     if(tz == ""){
       retval$tz_cd <- rep("UTC", nrow(retval))
     } else {
@@ -236,8 +254,17 @@ stateCdLookup <- function(input, outputType="postal"){
 #' name <- countyCdLookup(state = "OH", county = 13, output = "fullName")
 #' index <- countyCdLookup(state = "Pennsylvania", county = "ALLEGHENY COUNTY", output = "tableIndex")
 #' fromIDs <- countyCdLookup(state = 13, county = 5, output = "fullName")
+#' already_correct <- countyCdLookup(county = "51001")
 countyCdLookup <- function(state, county, outputType = "id"){
   outputType <- match.arg(outputType, c("fullName","tableIndex","id","fullEntry"))
+  
+  if(missing(state)){
+    return(county)
+  }
+  
+  if(missing(county)){
+    stop("No county code provided")
+  }
   
   #first turn state into stateCd postal name
   stateCd <- stateCdLookup(state,outputType = "postal")
@@ -286,6 +313,10 @@ readNWISdots <- function(...){
   
   matchReturn <- convertLists(...)
   
+  if(anyNA(unlist(matchReturn))){
+    stop("NA's are not allowed in query")
+  }
+  
   if("service" %in% names(matchReturn)){
     service <- matchReturn$service
     matchReturn$service <- NULL
@@ -293,7 +324,7 @@ readNWISdots <- function(...){
     service <- "dv"
   }
   
-  match.arg(service, c("dv","iv","gwlevels","site", "uv","qw","measurements","qwdata","stat"))
+  match.arg(service, c("dv","iv","iv_recent","gwlevels","site", "uv","qw","measurements","qwdata","stat","rating"))
   
   if(service == "uv"){
     service <- "iv"
@@ -314,6 +345,12 @@ readNWISdots <- function(...){
   
   format.default <- "waterml,1.1"
   
+  if(service == "iv" && "startDT" %in% names(values)){
+    if(as.Date(values[["startDT"]]) >= Sys.Date()-120){
+      service <- "iv_recent"
+    }
+  }
+  
   names(values)[names(values) == "statecode"] <- "stateCd"
   if("stateCd" %in% names(values)){
     values["stateCd"] <- stateCdLookup(values["stateCd"], "postal")
@@ -322,12 +359,22 @@ readNWISdots <- function(...){
       stop("NWIS does not include U.S. Minor Outlying Islands")
     }
   }
+		
+  if("parameterCd" %in% names(matchReturn)){
+    pcodeCheck <- (nchar(matchReturn$parameterCd) == 5) & !is.na(suppressWarnings(as.numeric(matchReturn$parameterCd)))
+    if(!all(pcodeCheck)){
+      badPcode <- matchReturn$parameterCd[which(!pcodeCheck)]
+      stop("The following pCodes appear mistyped:",paste(badPcode,collapse=","))
+    } 
+  }
   
   names(values)[names(values) == "countycode"] <- "countyCd"
   if("countyCd" %in% names(values)){
-    values["countyCd"] <- paste0(stateCdLookup(values["stateCd"], "id"), 
-                                 countyCdLookup(values["stateCd"], values["countyCd"], "id"))
-    values <- values[names(values) != "stateCd"]
+    if("stateCd" %in% names(values)){
+      values["countyCd"] <- paste0(stateCdLookup(values["stateCd"], "id"), 
+                                   countyCdLookup(values["stateCd"], values["countyCd"], "id"))
+      values <- values[names(values) != "stateCd"]      
+    }
   }
   
   if (service %in% c("qwdata","measurements")){
@@ -359,7 +406,7 @@ readNWISdots <- function(...){
     }
   } 
   
-  if(service %in% c("site","gwlevels","stat")){
+  if(service %in% c("site","gwlevels","stat","rating")){
     format.default <- "rdb"
   }
   

@@ -1,10 +1,9 @@
 #' Site Data Import from NWIS
 #'
 #' Returns a list of sites from the NWIS web service. This function gets the data from: \url{https://waterservices.usgs.gov/rest/Site-Test-Tool.html}.
-#' Arguments to the function should be based on \url{https://waterservices.usgs.gov/rest/Site-Service.html#Service}
 #' Mapper format is used
 #'
-#' @param \dots see \url{https://waterservices.usgs.gov/rest/Site-Service.html#Service} for a complete list of options. A 
+#' @param \dots see \url{https://waterservices.usgs.gov/rest/Site-Service.html} for a complete list of options. A 
 #' list (or lists) can also be supplied.
 #' @import utils
 #' @return A data frame with at least the following columns:
@@ -37,8 +36,6 @@
 #' oneSite <- whatNWISsites(sites="05114000")
 #' }
 whatNWISsites <- function(...){
-  
-  values <- readNWISdots(...)
   
   valuesList <- readNWISdots(...)
 
@@ -81,7 +78,12 @@ whatNWISsites <- function(...){
   retVal <- retVal[!duplicated(retVal),]
 
   attr(retVal, "url") <- urlCall
-  attr(retVal, "queryTime") <- Sys.time()
+  
+  timenow <- Sys.time()
+  
+  attr(retVal, "queryTime") <- timenow
+  # Backwards compatible, might remove later:
+  retVal$queryTime <- timenow
   
   return(retVal)
 }

@@ -14,11 +14,11 @@ readNWISuv(siteNumbers, parameterCd, startDate = "", endDate = "",
 
 \item{startDate}{character starting date for data retrieval in the form YYYY-MM-DD. Default is "" which indicates
 retrieval for the earliest possible record. Simple date arguments are specified in local time.
-See more information here: \url{https://waterservices.usgs.gov/rest/IV-Service.html#Specifying}.}
+See more information here: \url{https://waterservices.usgs.gov/rest/IV-Service.html}.}
 
 \item{endDate}{character ending date for data retrieval in the form YYYY-MM-DD. Default is "" which indicates
 retrieval for the latest possible record. Simple date arguments are specified in local time.
-See more information here: \url{https://waterservices.usgs.gov/rest/IV-Service.html#Specifying}.}
+See more information here: \url{https://waterservices.usgs.gov/rest/IV-Service.html}.}
 
 \item{tz}{character to set timezone attribute of dateTime. Default is "UTC", and converts the 
 date times to UTC, properly accounting for daylight savings times based on the data's provided tz_cd column.
@@ -67,6 +67,8 @@ startDate <- "2014-10-10"
 endDate <- "2014-10-10"
 \dontrun{
 rawData <- readNWISuv(site_id,parameterCd,startDate,endDate)
+
+rawData_today <- readNWISuv(site_id, parameterCd, Sys.Date(),Sys.Date())
 
 timeZoneChange <- readNWISuv(c('04024430','04024000'),parameterCd,
          "2013-11-03","2013-11-03")
